@@ -181,3 +181,173 @@ class Tableau(Pile):
     def __str__(self):
         hidden_count = len(self.cards) - self.face_up_cards
         return f"Tableau({hidden_count} hidden, {self.face_up_cards} visible): {self.cards[-self.face_up_cards:]}"
+
+class Solitaire:
+    def __init__(self):
+        self.stock = Stock()
+        self.waste = Pile()
+        self.tableau = [Tableau() for _ in range(7)]
+        self.foundation = [
+            Foundation(suit) for suit in ["hearts", "diamonds", "spades", "clubs"]
+        ]
+        self.setup_game()
+
+    def draw_from_stock(self):
+        """Trage o carte din stiva Stock in Waste."""
+        if self.stock.is_empty():
+            raise ValueError("Stock is empty!")
+        card = self.stock.remove_card()
+        self.waste.add_card(card)
+        return card
+
+    def move_from_waste_to_tableau(self, tableau_index):
+        """Muta o carte din Waste pe o stiva Tableau."""
+        if self.waste.is_empty():
+            raise ValueError("Waste is empty!")
+        card = self.waste.peek()
+        tableau = self.tableau[tableau_index]
+        if tableau.can_add_card(card):
+            tableau.cards.append(self.waste.remove_card())
+            tableau.face_up_cards += 1
+            return True
+        raise ValueError(f"Cannot move {card} to Tableau {tableau_index + 1}")
+
+    def move_from_waste_to_foundation(self):
+        """Muta o carte din Waste intr-o stiva Foundation."""
+        if self.waste.is_empty():
+            raise ValueError("Waste is empty!")
+        card = self.waste.peek()
+        for foundation in self.foundation:
+            if foundation.can_add_card(card):
+                foundation.add_card(self.waste.remove_card())
+                return True
+        raise ValueError(f"Cannot move {card} to any Foundation")
+
+    def recycle_stock(self):
+        """Reumple Stock cu cartile din Waste."""
+        if not self.stock.is_empty():
+            raise ValueError("Stock is not empty! You cannot recycle")
+        self.stock.cards = list(reversed(self.waste.cards))
+        self.waste.cards = []
+
+    def setup_game(self):
+        """Initializeaza jocul distribuind cartile."""
+        deck = Deck()
+        deck.shuffle()
+
+        for i in range(7):
+            for j in range(i + 1):
+                card = deck.deal_one()
+                self.tableau[i].add_card(card)
+                if j == i:
+                    self.tableau[i].face_up_cards += 1
+        self.stock.cards = deck.cards
+
+    def setup_almost_win_state(self):
+        """Configureaza jocul intr-o stare aproape castigatoare."""
+        self.stock.cards = []
+        self.waste.cards = []
+        self.tableau = []
+        self.foundation = []
+
+        suits = ["hearts", "diamonds", "clubs", "spades"]
+        for suit in suits:
+            foundation_cards = [Card(value, suit) for value in range(1, 13)]
+            foundation = Foundation(suit)
+            for card in foundation_cards:
+                foundation.add_card(card)
+            self.foundation.append(foundation)
+
+        for suit in suits:
+            tableau = Tableau()
+            king_card = Card(13, suit)
+            tableau.add_cards([king_card])
+            tableau.face_up_cards = 1
+            self.tableau.append(tableau)
+
+    def __str__(self):
+        """Debug"""
+        tableau_str = "\n".join(
+            [f"Tableau {i + 1}: {str(t)}" for i, t in enumerate(self.tableau)]
+        )
+        foundation_str = "\n".join([str(f) for f in self.foundation])
+        return (
+            f"Stock: {len(self.stock.cards)} cards\n\n{tableau_str}\n\n{foundation_str}"
+        )
+
+    def move_to_foundation(self, tableau_index):
+        """Muta o carte din Tableau intr-un Foundation."""
+        tableau = self.tableau[tableau_index]
+        card = tableau.peek()
+        if card:
+            for foundation in self.foundation:
+                if foundation.can_add_card(card):
+                    foundation.add_card(tableau.remove_card())
+                    tableau.reveal_card()
+                    return True
+        return False
+
+    def move_within_tableau(self, from_index, to_index, start_card_index):
+        """Mută o secvență de cărți de la un Tableau la altul."""
+        from_tableau = self.tableau[from_index]
+        to_tableau = self.tableau[to_index]
+
+        print(
+            f"Attempting to move from Tableau {from_index + 1} to Tableau {to_index + 1}"
+        )
+        print(f"Cards to move: {from_tableau.cards[start_card_index:]}")
+        print(f"Target tableau top card: {to_tableau.peek()}")
+
+        if start_card_index < len(from_tableau.cards) - from_tableau.face_up_cards:
+            raise ValueError("Cannot move hidden cards")
+
+        cards_to_move = from_tableau.cards[start_card_index:]
+
+        if not to_tableau.can_add_card(cards_to_move[0]):
+            print(
+                f"Move not allowed: {cards_to_move[0]} cannot be placed on {to_tableau.peek()}"
+            )
+            raise ValueError("Invalid move according to Solitaire rules")
+
+        from_tableau.cards = from_tableau.cards[:start_card_index]
+        from_tableau.face_up_cards = max(
+            0, from_tableau.face_up_cards - len(cards_to_move)
+        )
+        to_tableau.add_cards(cards_to_move)
+
+        from_tableau.reveal_card()
+
+        print(f"Move successful. Tableau {to_index + 1} now has: {to_tableau.cards}")
+
+    def move_from_stock_to_tableau(self, tableau_index):
+        """Muta o carte din Stock pe un Tableau."""
+        if self.stock.is_empty():
+            raise ValueError("Stock is empty!")
+
+        card = self.stock.peek()
+        tableau = self.tableau[tableau_index]
+        print(f"Attempting to move {card} from Stock to Tableau {tableau_index + 1}")
+        if tableau.can_add_card(card):
+            tableau.add_cards([self.stock.remove_card()])
+            print(f"Move successful: {card} added to Tableau {tableau_index + 1}")
+            return True
+        raise ValueError(f"Cannot move {card} to Tableau {tableau_index + 1}")
+
+    def move_from_stock_to_foundation(self):
+        """Muta o carte din Stock intr-un Foundation."""
+        if self.stock.is_empty():
+            raise ValueError("Stock is empty!")
+
+        card = self.stock.peek()
+
+        for foundation in self.foundation:
+            if foundation.can_add_card(card):
+                foundation.add_card(self.stock.remove_card())
+                return True
+        raise ValueError(f"Cannot move {card} to any Foundation")
+
+    def check_win(self):
+        """Verifica daca jocul este castigat."""
+        return all(len(f.cards) == 13 for f in self.foundation)
+
+
