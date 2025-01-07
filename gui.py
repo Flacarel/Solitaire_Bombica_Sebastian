@@ -226,6 +226,141 @@ class SolitaireGUI:
             dash=(3, 5),
         )
 
+    def get_stack_at_position(self, x, y):
+        """Determina ce stiva (Stock, Waste, Foundation, Tableau) a fost selectata de click pe baza coordonatelor."""
+        x_offset = (self.canvas_width - (7 * (self.card_width + self.padding))) // 2
+
+        if (
+            x_offset <= x <= x_offset + self.card_width
+            and 10 <= y <= 10 + self.card_height
+        ):
+            return "Stock"
+
+        if (
+            x_offset + self.card_width + self.padding
+            <= x
+            <= x_offset + 2 * (self.card_width + self.padding)
+            and 10 <= y <= 10 + self.card_height
+        ):
+            return "Waste"
+
+        for i in range(4):
+            foundation_x = x_offset + (2 + i) * (self.card_width + self.padding)
+            if (
+                foundation_x <= x <= foundation_x + self.card_width
+                and 10 <= y <= 10 + self.card_height
+            ):
+                return f"Foundation {i + 1}"
+
+        for i in range(7):
+            tableau_x = x_offset + i * (self.card_width + self.padding)
+            if tableau_x <= x <= tableau_x + self.card_width and 250 <= y:
+                return f"Tableau {i + 1}"
+
+        return None
+
+    def get_selected_card(self, tableau_index, x, y):
+        """Determină care carte din Tableau a fost selectată pe baza coordonatelor."""
+        tableau = self.game.tableau[tableau_index]
+        start_y = 250
+
+        for i in range(len(tableau.cards) - 1, -1, -1):
+            card_y = start_y + i * 20
+            if card_y <= y <= card_y + self.card_height:
+                return i
+
+        print(
+            f"No card selected in Tableau {tableau_index + 1}. Click at x={x}, y={y} not valid."
+        )
+        return None
+
+    def on_click(self, event):
+        """Gestioneaza interactiunea cu click-urile"""
+        stack = self.get_stack_at_position(event.x, event.y)
+        if stack:
+            if stack == "Stock":
+                print("Clicked on Stock. Drawing card to Waste.")
+                self.game.draw_from_stock()
+                self.draw_game()
+                return
+
+            if self.selected_stack is None:
+                self.selected_stack = stack
+                print(f"Selected stack: {stack}")
+                if "Tableau" in stack:
+                    tableau_index = int(stack.split()[-1]) - 1
+                    self.selected_card_index = self.get_selected_card(
+                        tableau_index, event.x, event.y
+                    )
+                    if self.selected_card_index is not None:
+                        selected_card = self.game.tableau[tableau_index].cards[
+                            self.selected_card_index
+                        ]
+                        print(
+                            f"Selected card in Tableau {tableau_index + 1}: {selected_card}"
+                        )
+                    else:
+                        print(
+                            f"Failed to select a card in Tableau {tableau_index + 1}."
+                        )
+            else:
+                print(f"Attempting to move from {self.selected_stack} to {stack}")
+                if "Tableau" in stack:
+                    tableau_index = int(stack.split()[-1]) - 1
+                    top_card = self.game.tableau[tableau_index].peek()
+                    print(f"Target tableau {tableau_index + 1} top card: {top_card}")
+                self.attempt_move(self.selected_stack, stack)
+                self.selected_stack = None
+                self.selected_card_index = None
+
+        self.draw_game()
+
+    def attempt_move(self, from_stack, to_stack):
+        """Gestioneaza logica pentru mutarea cartilor intre stivele jocului."""
+        try:
+            if from_stack == "Stock" and to_stack == "Waste":
+                self.game.draw_from_stock()
+                self.move_count += 1
+            elif "Waste" in from_stack and "Tableau" in to_stack:
+                tableau_index = int(to_stack.split()[-1]) - 1
+                print(f"Moving card from Waste to Tableau {tableau_index + 1}")
+                self.game.move_from_waste_to_tableau(tableau_index)
+                self.move_count += 1
+            elif "Tableau" in from_stack and "Tableau" in to_stack:
+                from_index = int(from_stack.split()[-1]) - 1
+                to_index = int(to_stack.split()[-1]) - 1
+                if self.selected_card_index is not None:
+                    print(
+                        f"Moving cards from Tableau {from_index + 1}, starting at index {self.selected_card_index}, to Tableau {to_index + 1}"
+                    )
+                    self.game.move_within_tableau(
+                        from_index, to_index, self.selected_card_index
+                    )
+                    self.move_count += 1
+            elif "Tableau" in from_stack and "Foundation" in to_stack:
+                tableau_index = int(from_stack.split()[-1]) - 1
+                print(
+                    f"Attempting to move from Tableau {tableau_index + 1} to Foundation"
+                )
+                card = self.game.tableau[tableau_index].peek()
+                if card:
+                    print(f"Moving card {card} to a Foundation")
+                    for i, foundation in enumerate(self.game.foundation):
+                        if foundation.can_add_card(card):
+                            foundation.add_card(
+                                self.game.tableau[tableau_index].remove_card()
+                            )
+                            self.game.tableau[tableau_index].reveal_card()
+                            self.move_count += 1
+                            break
+            elif "Waste" in from_stack and "Foundation" in to_stack:
+                print("Attempting to move card from Waste to Foundation")
+                self.game.move_from_waste_to_foundation()
+                self.move_count += 1
+            else:
+                print("Invalid move")
+        except ValueError as e:
+            print(f"Move error: {e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
